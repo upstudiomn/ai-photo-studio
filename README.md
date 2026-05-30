@@ -14,3 +14,4 @@ Use `/doc` as the main source of truth:
 
 Codex agents should read `AGENTS.md` first, then follow the source priority listed there.
 # ai-photo-studio
+# ai-photo-studio

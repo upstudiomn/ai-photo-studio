@@ -1,0 +1,52 @@
+{
+  "name": "ai-photo-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test:e2e": "playwright test",
+    "test:production-admin": "playwright test e2e/production-admin-smoke.spec.ts --project=chromium",
+    "setup:admin": "tsx scripts/ensure-default-admin.ts",
+    "setup:production-admin": "tsx scripts/ensure-production-admin.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "^16.2.6",
+    "pg": "^8.21.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "replicate": "^1.4.0",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@playwright/test": "^1.60.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.7",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^16.2.6",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.7.3"
+  }
+}
