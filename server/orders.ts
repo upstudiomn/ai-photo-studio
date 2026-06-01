@@ -1,37 +1,11 @@
 import "server-only";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isLocalDatabaseMode } from "@/lib/db/mode";
 import { getTemplateBySlug } from "@/lib/templates";
 import { demoProductChoices } from "@/lib/preview-flow";
 import { mockImageProvider } from "@/server/ai/mock";
 import { getImageProvider, getActiveAIProvider } from "@/server/ai/provider";
 import { uploadGeneratedPreview, uploadGeneratedPreviewFromUrl, loadImageFromStorageAsBase64 } from "@/server/storage";
 import { SOURCE_IMAGES_BUCKET } from "@/server/storage";
-import {
-  addLocalUploadedImage,
-  createLocalCheckoutOrderFromSession,
-  createLocalGeneratedOutputs,
-  createLocalGenerationSession,
-  createLocalManualPayment,
-  createLocalMockGeneratedOutputsForSession,
-  createLocalOrderFromSession,
-  createLocalOrderItem,
-  createLocalPrintJob,
-  getLocalConfirmedOrderById,
-  getLocalConfirmedOrderDetailById,
-  getLocalGenerationSessionById,
-  getLocalTemplateById,
-  getLocalTemplateBySlug,
-  listLocalAdminOrders,
-  listLocalGeneratedOutputs,
-  listLocalTemplates,
-  listLocalUploadedImages,
-  selectLocalGeneratedOutput,
-  selectLocalSessionTemplate,
-  selectLocalSessionTemplateBySlug,
-  updateLocalSessionStatus,
-  updateLocalOrderStatus,
-} from "@/server/local-data";
+import { db } from "@/server/db/database-repo";
 import type { Database, GenerationSessionStatus, OrderStatus } from "@/types/database";
 import type { ProductChoiceId } from "@/types/studio";
 
@@ -46,82 +20,23 @@ type PrintJobInsert = Database["public"]["Tables"]["print_jobs"]["Insert"];
 type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
 
 export async function createGenerationSession(input: GenerationSessionInsert = {}) {
-  if (isLocalDatabaseMode()) {
-    return createLocalGenerationSession(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("generation_sessions").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.createGenerationSession(input);
 }
 
 export async function getGenerationSessionById(id: string) {
-  if (isLocalDatabaseMode()) {
-    return getLocalGenerationSessionById(id);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("generation_sessions").select("*").eq("id", id).single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.getGenerationSessionById(id);
 }
 
 export async function getAITemplateBySlug(slug: string) {
-  if (isLocalDatabaseMode()) {
-    return getLocalTemplateBySlug(slug);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("ai_templates").select("*").eq("slug", slug).single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.getTemplateBySlug(slug);
 }
 
 export async function getAITemplateById(id: string) {
-  if (isLocalDatabaseMode()) {
-    return getLocalTemplateById(id);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("ai_templates").select("*").eq("id", id).single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.getTemplateById(id);
 }
 
 export async function listActiveAITemplates() {
-  if (isLocalDatabaseMode()) {
-    return listLocalTemplates();
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("ai_templates")
-    .select("*")
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.listActiveTemplates();
 }
 
 export async function updateGenerationSessionStatus(
@@ -129,124 +44,36 @@ export async function updateGenerationSessionStatus(
   status: GenerationSessionStatus,
   patch: Omit<GenerationSessionUpdate, "status"> = {},
 ) {
-  if (isLocalDatabaseMode()) {
-    return updateLocalSessionStatus(id, status, patch);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("generation_sessions")
-    .update({
-      ...patch,
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.updateGenerationSessionStatus(id, status, patch);
 }
 
 export async function selectSessionTemplate(sessionId: string, templateId: string) {
-  if (isLocalDatabaseMode()) {
-    return selectLocalSessionTemplate(sessionId, templateId);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("generation_sessions")
-    .update({
-      template_id: templateId,
-      status: "template_selected",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId)
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.selectSessionTemplate(sessionId, templateId);
 }
 
 export async function selectSessionTemplateBySlug(sessionId: string, templateSlug: string) {
-  if (isLocalDatabaseMode()) {
-    return selectLocalSessionTemplateBySlug(sessionId, templateSlug);
-  }
-
   try {
     const template = await getAITemplateBySlug(templateSlug);
-
     return selectSessionTemplate(sessionId, template.id);
   } catch (error) {
-    console.warn("Template was not found in Supabase. Marking session as template_selected without template_id.", error);
-
+    console.warn("Template was not found. Marking session as template_selected without template_id.", error);
     return updateGenerationSessionStatus(sessionId, "template_selected");
   }
 }
 
 export async function addUploadedImage(input: UploadedImageInsert) {
-  if (isLocalDatabaseMode()) {
-    return addLocalUploadedImage(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("uploaded_images").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.addUploadedImage(input);
 }
 
 export async function listSessionUploadedImages(sessionId: string) {
-  if (isLocalDatabaseMode()) {
-    return listLocalUploadedImages(sessionId);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("uploaded_images")
-    .select("*")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.listSessionUploadedImages(sessionId);
 }
 
 export async function saveGeneratedOutput(input: GeneratedOutputInsert) {
-  if (isLocalDatabaseMode()) {
-    const [output] = await createLocalGeneratedOutputs(input);
-    return output;
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("generated_outputs").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.saveGeneratedOutput(input);
 }
 
 export async function createMockGeneratedOutputsForSession(sessionId: string, templateSlug?: string | null) {
-  if (isLocalDatabaseMode()) {
-    return createLocalMockGeneratedOutputsForSession(sessionId, templateSlug);
-  }
-
   const existingOutputs = await listSessionGeneratedOutputs(sessionId);
 
   if (existingOutputs.length > 0) {
@@ -255,10 +82,7 @@ export async function createMockGeneratedOutputsForSession(sessionId: string, te
   }
 
   const session = await getGenerationSessionById(sessionId);
-  const supabase = createSupabaseAdminClient();
-  const { data: dbTemplate } = session.template_id
-    ? await supabase.from("ai_templates").select("*").eq("id", session.template_id).single()
-    : await supabase.from("ai_templates").select("*").eq("slug", templateSlug ?? "").maybeSingle();
+  const dbTemplate = session.template_id ? await getAITemplateById(session.template_id) : null;
   const localTemplate = getTemplateBySlug(templateSlug ?? "") ?? getTemplateBySlug("old-photo-restoration");
   const provider = getImageProvider();
   const activeProvider = getActiveAIProvider();
@@ -357,94 +181,15 @@ export async function createMockGeneratedOutputsForSession(sessionId: string, te
 }
 
 export async function listSessionGeneratedOutputs(sessionId: string) {
-  if (isLocalDatabaseMode()) {
-    return listLocalGeneratedOutputs(sessionId);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("generated_outputs")
-    .select("*")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.listSessionGeneratedOutputs(sessionId);
 }
 
 export async function selectGeneratedOutput(sessionId: string, outputId: string) {
-  if (isLocalDatabaseMode()) {
-    return selectLocalGeneratedOutput(sessionId, outputId);
-  }
-
-  const supabase = createSupabaseAdminClient();
-
-  const { error: resetError } = await supabase
-    .from("generated_outputs")
-    .update({ is_selected: false })
-    .eq("session_id", sessionId);
-
-  if (resetError) {
-    throw resetError;
-  }
-
-  const { data, error } = await supabase
-    .from("generated_outputs")
-    .update({ is_selected: true })
-    .eq("id", outputId)
-    .eq("session_id", sessionId)
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  const { error: sessionError } = await supabase
-    .from("generation_sessions")
-    .update({
-      selected_output_id: outputId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId);
-
-  if (sessionError) {
-    throw sessionError;
-  }
-
-  return data;
+  return db.selectGeneratedOutput(sessionId, outputId);
 }
 
 export async function createOrderFromSession(input: OrderInsert) {
-  if (isLocalDatabaseMode()) {
-    return createLocalOrderFromSession(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("orders").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  const { error: sessionError } = await supabase
-    .from("generation_sessions")
-    .update({
-      status: "converted_to_order",
-      converted_order_id: data.id,
-      selected_output_id: data.selected_output_id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", data.session_id);
-
-  if (sessionError) {
-    throw sessionError;
-  }
-
-  return data;
+  return db.createOrder(input);
 }
 
 export async function convertSessionToOrder(input: OrderInsert) {
@@ -452,88 +197,19 @@ export async function convertSessionToOrder(input: OrderInsert) {
 }
 
 export async function createOrderItem(input: OrderItemInsert) {
-  if (isLocalDatabaseMode()) {
-    return createLocalOrderItem(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("order_items").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.createOrderItem(input);
 }
 
 export async function createManualPayment(input: PaymentInsert) {
-  if (isLocalDatabaseMode()) {
-    return createLocalManualPayment(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("payments").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.createPayment(input);
 }
 
 export async function getConfirmedOrderById(id: string) {
-  if (isLocalDatabaseMode()) {
-    return getLocalConfirmedOrderById(id);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.getOrderById(id);
 }
 
 export async function getConfirmedOrderDetailById(id: string) {
-  if (isLocalDatabaseMode()) {
-    return getLocalConfirmedOrderDetailById(id);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data: order, error } = await supabase.from("orders").select("*").eq("id", id).single();
-
-  if (error) {
-    throw error;
-  }
-
-  const [items, payments, printJobs, output, session, uploadedImages] = await Promise.all([
-    supabase.from("order_items").select("*").eq("order_id", id),
-    supabase.from("payments").select("*").eq("order_id", id),
-    supabase.from("print_jobs").select("*").eq("order_id", id),
-    order.selected_output_id
-      ? supabase.from("generated_outputs").select("*").eq("id", order.selected_output_id).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    supabase.from("generation_sessions").select("*, ai_templates(*)").eq("id", order.session_id).maybeSingle(),
-    supabase.from("uploaded_images").select("*").eq("session_id", order.session_id).order("created_at", { ascending: true }),
-  ]);
-
-  const tableError = items.error ?? payments.error ?? printJobs.error ?? output.error ?? session.error ?? uploadedImages.error;
-
-  if (tableError) {
-    throw tableError;
-  }
-
-  return {
-    order,
-    items: items.data ?? [],
-    payments: payments.data ?? [],
-    printJobs: printJobs.data ?? [],
-    selectedOutput: output.data,
-    session: session.data,
-    uploadedImages: uploadedImages.data ?? [],
-  };
+  return db.getOrderDetailById(id);
 }
 
 export async function createCheckoutOrderFromSession(input: {
@@ -544,10 +220,6 @@ export async function createCheckoutOrderFromSession(input: {
   customerPhone?: string | null;
   deliveryAddress?: string | null;
 }) {
-  if (isLocalDatabaseMode()) {
-    return createLocalCheckoutOrderFromSession(input);
-  }
-
   const product = demoProductChoices.find((choice) => choice.id === input.productId);
 
   if (!product) {
@@ -599,59 +271,13 @@ export async function createCheckoutOrderFromSession(input: {
 }
 
 export async function listAdminOrders(limit = 50) {
-  if (isLocalDatabaseMode()) {
-    return listLocalAdminOrders(limit);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, generation_sessions(*), order_items(*), print_jobs(*), payments(*)")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.listAdminOrders(limit);
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus, patch: Omit<OrderUpdate, "status"> = {}) {
-  if (isLocalDatabaseMode()) {
-    return updateLocalOrderStatus(id, status);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .update({
-      ...patch,
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.updateOrderStatus(id, status, patch);
 }
 
 export async function createPrintJob(input: PrintJobInsert) {
-  if (isLocalDatabaseMode()) {
-    return createLocalPrintJob(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("print_jobs").insert(input).select("*").single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.createPrintJob(input);
 }

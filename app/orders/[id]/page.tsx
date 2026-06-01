@@ -20,6 +20,7 @@ import { formatMnt, shortId } from "@/lib/utils";
 import { getAITemplateById, getConfirmedOrderDetailById } from "@/server/orders";
 import { GENERATED_PREVIEWS_BUCKET, getPublicOrSignedUrl, getStoredImageDisplayUrl } from "@/server/storage";
 import type { PaymentStatus } from "@/types/studio";
+import { OrderDetail } from "@/server/db/repo-interface";
 
 const timeline = [
   "Order confirmed",
@@ -68,7 +69,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ id
 
   if (!existingOrder && id !== DEMO_ORDER_ID) {
     try {
-      const detail = await getConfirmedOrderDetailById(id);
+      const detail: OrderDetail = await getConfirmedOrderDetailById(id);
       const item = detail.items[0];
       const payment = detail.payments[0];
       const printJob = detail.printJobs[0];
