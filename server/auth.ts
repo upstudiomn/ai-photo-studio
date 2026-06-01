@@ -1,12 +1,7 @@
 import "server-only";
-import { isLocalDatabaseMode } from "@/lib/db/mode";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  createLocalProfile,
-  getLocalProfileById,
-  getLocalProfileByPhone,
-} from "@/server/local-data";
+import { db } from "@/server/db/database-repo";
 import type { Database } from "@/types/database";
 
 export type CustomerSignUpInput = {
@@ -46,64 +41,18 @@ export async function getCurrentProfile() {
     return null;
   }
 
-  if (isLocalDatabaseMode()) {
-    return getLocalProfileById(user.id);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-
-  if (error) {
-    console.error("Failed to load current profile.", error);
-    return null;
-  }
-
-  return data;
+  return db.getProfileById(user.id);
 }
 
 export async function upsertCustomerProfile(input: ProfileInsert) {
-  if (isLocalDatabaseMode()) {
-    return createLocalProfile(input);
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert(
-      {
-        ...input,
-        role: input.role ?? "customer",
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    )
-    .select("*")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return db.upsertProfile({
+    ...input,
+    role: input.role ?? "customer",
+  });
 }
 
 export async function phoneExists(phone: string) {
-  if (isLocalDatabaseMode()) {
-    return Boolean(await getLocalProfileByPhone(phone));
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("phone", normalizePhone(phone))
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return Boolean(data);
+  return Boolean(await db.getProfileByPhone(normalizePhone(phone)));
 }
 
 export async function signUpCustomer(input: CustomerSignUpInput) {
@@ -121,68 +70,39 @@ export async function signUpCustomer(input: CustomerSignUpInput) {
     role: "customer",
   };
 
-  if (isLocalDatabaseMode()) {
-    const admin = createSupabaseAdminClient();
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email,
-      password: input.password,
-      email_confirm: true,
-      user_metadata: {
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-      },
-    });
-
-    if (createError) {
-      throw createError;
-    }
-
-    if (!created.user) {
-      throw new Error("Supabase Auth did not return a created user.");
-    }
-
-    await upsertCustomerProfile({
-      ...profileInput,
-      id: created.user.id,
-    });
-
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password: input.password,
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    return data;
-  }
-
-  const supabase = await createSupabaseServerClient();
-
-  const { data, error } = await supabase.auth.signUp({
+  const admin = createSupabaseAdminClient();
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password: input.password,
-    options: {
-      data: {
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-      },
+    email_confirm: true,
+    user_metadata: {
+      first_name: firstName,
+      last_name: lastName,
+      phone,
     },
+  });
+
+  if (createError) {
+    throw createError;
+  }
+
+  if (!created.user) {
+    throw new Error("Supabase Auth did not return a created user.");
+  }
+
+  await upsertCustomerProfile({
+    ...profileInput,
+    id: created.user.id,
+  });
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: input.password,
   });
 
   if (error) {
     throw error;
-  }
-
-  if (data.user) {
-    await upsertCustomerProfile({
-      ...profileInput,
-      id: data.user.id,
-    });
   }
 
   return data;
@@ -194,28 +114,13 @@ export async function loginWithEmailOrPhone(identifier: string, password: string
   let email = trimmedIdentifier.toLowerCase();
 
   if (!trimmedIdentifier.includes("@")) {
-    if (isLocalDatabaseMode()) {
-      const profile = await getLocalProfileByPhone(trimmedIdentifier);
+    const profile = await db.getProfileByPhone(normalizePhone(trimmedIdentifier));
 
-      if (!profile?.email) {
-        throw new Error("Invalid credentials");
-      }
-
-      email = profile.email;
-    } else {
-    const admin = createSupabaseAdminClient();
-    const { data, error } = await admin
-      .from("profiles")
-      .select("email")
-      .eq("phone", normalizePhone(trimmedIdentifier))
-      .maybeSingle();
-
-    if (error || !data?.email) {
+    if (!profile?.email) {
       throw new Error("Invalid credentials");
     }
 
-    email = data.email;
-    }
+    email = profile.email;
   }
 
   const { data, error } = await supabase.auth.signInWithPassword({
